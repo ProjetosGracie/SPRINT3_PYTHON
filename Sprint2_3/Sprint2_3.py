@@ -71,7 +71,7 @@ def conectar_veiculo():
         print("Valor inválido. Por favor, informe um número.")
         return
     
-    if placa in sessao:
+    if placa in [v["placa"] for v in sessao]:
         print("Veículo já conectado.\n")
     
     else:
@@ -79,15 +79,16 @@ def conectar_veiculo():
         sessao.append(veiculo_conectado) # --> adiciona o carro na lista de sessao
         print(f" ===== VEICULO {placa} CONECTADO =====\n")
 
-        # chama as duas funcoes para podermos calcular o tempo e o pagamento 
-        calcular_tempo()
-        pagamento()
+        # CORREÇÃO: chama as duas funções passando apenas o veículo recém-conectado,
+        # em vez de reprocessar todos os veículos já existentes na sessão.
+        calcular_tempo(veiculo_conectado)
+        pagamento(veiculo_conectado)
 
 
 # POTENCIA_POSTO - INFORMA A POTENCIA QUE OS CARROS ESTAO UTILIZANDO E INFORMA QUANTOS CARROS ESTAO CONECTADOS 
 def potencia_posto():
     n = 0
-    potencia_padrao = limite_posto / (len(sessao) + 0.4)
+    potencia_calculada = limite_posto / (len(sessao) + 0.4)
 
     if not sessao:
         print("Nenhum veículo conectado.")
@@ -95,12 +96,12 @@ def potencia_posto():
     
     for veiculo in sessao:
         n += 1
-        veiculo["potencia (kW)"] = potencia_padrao
+        veiculo["potencia (kW)"] = potencia_calculada
         print(f"\n====== Registro {n} ======")
-        print(f"Veículo: {veiculo['placa']}\nPotencia: {potencia_padrao:.2f} kW.")
+        print(f"Veículo: {veiculo['placa']}\nPotencia: {potencia_calculada:.2f} kW.")
         print("===========================\n")
 
-    print(f"Total de veículo(s) conectado(s): {len(sessao)}\nPotencia que o(s) veiculo(s) recebeu(ao): {potencia_padrao:.2f} kW.\n")
+    print(f"Total de veículo(s) conectado(s): {len(sessao)}\nPotencia que o(s) veiculo(s) recebeu(ao): {potencia_calculada:.2f} kW.\n")
 
 # DADOS - DADOS DE CADA CARRO REGISTRADO, INFORMANDO A PLACA, POTENCIA DA BATERIA, POTENCIA UTILIZADA, PORCENTAGEM DA BATERIA, HORARIO DE INICIO, HORARIO FINAL, 
 def dados():
@@ -134,88 +135,79 @@ def remover_veiculo():
             
     print(f"Veículo {placa_remover} não encontrado.\n")
 
-# CALCULAR_TEMPO - CALCULA O TEMPO TOTAL 
-def calcular_tempo():
-    if not sessao:
-        print("Nenhum veículo conectado.")
-        return
+# CALCULAR_TEMPO - CALCULA O TEMPO TOTAL DE UM ÚNICO VEÍCULO
+def calcular_tempo(veiculo):
+    horario_inicial = veiculo["horario inicio"]
 
-    for veiculo in sessao:
-        horario_inicial = veiculo["horario inicio"]
+    # Calcula o tempo de carregamento em horas
+    tempo = veiculo["Potencia da bateria (kWh)"] / veiculo["potencia (kW)"]
 
-        # Calcula o tempo de carregamento em horas
-        tempo = veiculo["Potencia da bateria (kWh)"] / veiculo["potencia (kW)"]
+    # Separa o horário inicial
+    horas, minutos = map(int, horario_inicial.split(":"))
 
-        # Separa o horário inicial
-        horas, minutos = map(int, horario_inicial.split(":"))
+    # Separa horas e minutos do tempo de carregamento
+    tempo_horas = int(tempo)
+    tempo_minutos = int((tempo - tempo_horas) * 60)
 
-        # Separa horas e minutos do tempo de carregamento
-        tempo_horas = int(tempo)
-        tempo_minutos = int((tempo - tempo_horas) * 60)
+    # Soma o tempo ao horário inicial
+    fim_horas = horas + tempo_horas
+    fim_minutos = minutos + tempo_minutos
 
-        # Soma o tempo ao horário inicial
-        fim_horas = horas + tempo_horas
-        fim_minutos = minutos + tempo_minutos
+    # Corrige quando os minutos passam de 60
+    if fim_minutos >= 60:
+        fim_horas += fim_minutos // 60
+        fim_minutos = fim_minutos % 60
 
-        # Corrige quando os minutos passam de 60
-        if fim_minutos >= 60:
-            fim_horas += fim_minutos // 60
-            fim_minutos = fim_minutos % 60
+    # Corrige quando passa de 24 horas
+    fim_horas = fim_horas % 24
 
-        # Corrige quando passa de 24 horas
-        fim_horas = fim_horas % 24
+    # Monta o horário final
+    horario_termino = f"{fim_horas:02d}:{fim_minutos:02d}"
 
-        # Monta o horário final
-        horario_termino = f"{fim_horas:02d}:{fim_minutos:02d}"
+    # Salva os resultados
+    veiculo["horario final previsto"] = horario_termino
+    veiculo["tempo de carregamento"] = tempo
 
-        # Salva os resultados
-        veiculo["horario final previsto"] = horario_termino
+# PAGAMENTO - CALCULA O QUANTO A PESSOA TEM QUE PAGAR E FAZ AS REGRAS
+def pagamento(veiculo):
 
-# PAGAMENTO - CALCULA O QUANTO A PESSOA TEM QUE PAGAR E FAZ AS REGRAS 
-def pagamento():
-    if not sessao:
-        print("Nenhum veículo conectado.")
-        return
-    
-    for veiculo in sessao:
+    # Separa hora e minuto
+    horas, minutos = map(int, veiculo["horario inicio"].split(":"))
 
-        # Separa hora e minuto
-        horas, minutos = map(int, veiculo["horario inicio"].split(":"))
+    # MADRUGADA (00h-06h)
+    if 0 <= horas < 6:
+        tarifa = 0.70
 
-        # MADRUGADA (00h-06h)
-        if 0 <= horas < 6:
-            tarifa = 0.70
+    # MANHÃ (06h-12h)
+    elif 6 <= horas < 12:
+        tarifa = 1.20
 
-        # MANHÃ (06h-12h)
-        elif 6 <= horas < 12:
-            tarifa = 1.20
+    # PICO ALMOÇO (12h-14h)
+    elif 12 <= horas < 14:
+        tarifa = 1.80
 
-        # PICO ALMOÇO (12h-14h)
-        elif 12 <= horas < 14:
-            tarifa = 1.80
+    # TARDE (14h-18h)
+    elif 14 <= horas < 18:
+        tarifa = 1.30
 
-        # TARDE (14h-18h)
-        elif 14 <= horas < 18:
-            tarifa = 1.30
+    # PICO NOITE (18h-21h)
+    elif 18 <= horas < 21:
+        tarifa = 1.80
 
-        # PICO NOITE (18h-21h)
-        elif 18 <= horas < 21:
-            tarifa = 1.80
+    # NOITE (21h-24h)
+    else:
+        tarifa = 1.30
 
-        # NOITE (21h-24h)
-        else:
-            tarifa = 1.30
-
-      
-        energia_consumida = (veiculo['Potencia da bateria (kWh)']*(100 - veiculo["Porcentagem"]))/100
-        valor_pagar = energia_consumida*tarifa*veiculo['tempo de carregamento']
-        veiculo['valor a pagar'] = valor_pagar
-        faturamento_lista.append(valor_pagar)
+  
+    energia_consumida = (veiculo['Potencia da bateria (kWh)']*(100 - veiculo["Porcentagem"]))/100
+    valor_pagar = energia_consumida*tarifa*veiculo['tempo de carregamento']
+    veiculo['valor a pagar'] = valor_pagar
+    faturamento_lista.append(veiculo)
 
 # FATURAMENTO_TOTAL - CALCULA O FATURAMENTO TOTAL DO POSTO      
 def faturamento_total():
-    if not sessao:
-        print("Nenhum veículo conectado.")
+    if not faturamento_lista:
+        print("Nenhum carregamento registrado ainda.")
         return
 
     faturamento = 0
@@ -224,7 +216,7 @@ def faturamento_total():
     for veiculo in faturamento_lista:
         faturamento += veiculo['valor a pagar']
         n += 1
-        print(f"Faturamento do {n}º carregamento: R$ {veiculo['valor a pagar']:.2f} ...")
+        print(f"Faturamento do {n}º carregamento ({veiculo['placa']}): R$ {veiculo['valor a pagar']:.2f} ...")
     print("======================================\n")
 
     print("====== CALCULO CONCLUIDO ======")
